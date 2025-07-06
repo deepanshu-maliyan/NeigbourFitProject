@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { supabase } from "@/lib/supabase/client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,10 +9,10 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { User, Settings, History, Mail, Calendar, MapPin, TrendingUp, Edit3, Save, X, Loader2 } from "lucide-react"
-import { getUserPreferences, getUserMatches, saveUserPreferences } from "@/lib/database"
+import { getUserPreferences, getUserMatches, saveUserPreferences, calculateAndSaveMatches } from "@/lib/database"
 import { quizQuestions } from "@/lib/quiz-questions"
 import type { UserPreferences, UserResult, Neighborhood } from "@/types"
-import type { User as AuthUser } from "@supabase/auth-helpers-nextjs"
+import type { User as AuthUser } from "@supabase/supabase-js"
 import Link from "next/link"
 
 interface ProfileContentProps {
@@ -22,13 +22,13 @@ interface ProfileContentProps {
 type MatchWithNeighborhood = UserResult & { neighborhood: Neighborhood }
 
 export default function ProfileContent({ user }: ProfileContentProps) {
-  const supabase = createClientComponentClient()
   const [preferences, setPreferences] = useState<UserPreferences | null>(null)
   const [matches, setMatches] = useState<MatchWithNeighborhood[]>([])
   const [loading, setLoading] = useState(true)
   const [editingPreferences, setEditingPreferences] = useState(false)
   const [tempPreferences, setTempPreferences] = useState<UserPreferences | null>(null)
   const [saving, setSaving] = useState(false)
+  const [recalculating, setRecalculating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -105,12 +105,35 @@ export default function ProfileContent({ user }: ProfileContentProps) {
     const labels = [
       "",
       "Not Important",
-      "Slightly Important",
+      "Slightly Important", 
       "Moderately Important",
       "Very Important",
       "Extremely Important",
     ]
     return labels[value] || "Unknown"
+  }
+
+  const recalculateMatches = async () => {
+    try {
+      setRecalculating(true)
+      setError(null)
+
+      // Recalculate matches using the improved algorithm
+      await calculateAndSaveMatches(user.id)
+
+      // Reload the updated matches
+      const updatedMatches = await getUserMatches(user.id)
+      setMatches(updatedMatches)
+
+      // Show success message briefly
+      setError("Matches recalculated successfully!")
+      setTimeout(() => setError(null), 3000)
+    } catch (err) {
+      console.error("Error recalculating matches:", err)
+      setError("Failed to recalculate matches. Please try again.")
+    } finally {
+      setRecalculating(false)
+    }
   }
 
   if (loading) {
@@ -137,6 +160,17 @@ export default function ProfileContent({ user }: ProfileContentProps) {
           </div>
         </CardHeader>
       </Card>
+
+      {/* Success/Error Notification */}
+      {error && (
+        <Card className={`border-2 ${error.includes('successfully') ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+          <CardContent className="pt-4">
+            <p className={`text-sm ${error.includes('successfully') ? 'text-green-700' : 'text-red-700'}`}>
+              {error}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Profile Tabs */}
       <Tabs defaultValue="account" className="space-y-6">
@@ -275,7 +309,7 @@ export default function ProfileContent({ user }: ProfileContentProps) {
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {Object.entries(preferences).map(([key, value]) => {
                       if (key === "id" || key === "user_id" || key === "created_at" || key === "updated_at") return null
 
@@ -285,10 +319,17 @@ export default function ProfileContent({ user }: ProfileContentProps) {
                           : (value as number)
 
                       return (
-                        <div key={key} className="bg-gray-50 p-4 rounded-lg">
-                          <div className="flex justify-between items-center mb-2">
-                            <h4 className="font-medium text-gray-900 text-sm">{getPreferenceLabel(key)}</h4>
-                            <Badge variant={currentValue >= 4 ? "default" : "secondary"}>
+                        <div key={key} className="bg-gray-50 p-5 rounded-lg border border-gray-100">
+                          <div className="flex justify-between items-start mb-3 gap-3">
+                            <h4 className="font-medium text-gray-900 text-sm flex-1 leading-relaxed pr-2">{getPreferenceLabel(key)}</h4>
+                            <Badge 
+                              variant={currentValue >= 4 ? "default" : "secondary"}
+                              className={`whitespace-nowrap text-xs px-3 py-1.5 min-w-fit shrink-0 font-medium ${
+                                currentValue >= 4 
+                                  ? 'bg-gradient-to-r from-airbnb-500 to-airbnb-600 text-white border-0' 
+                                  : ''
+                              }`}
+                            >
                               {getImportanceText(currentValue)}
                             </Badge>
                           </div>
@@ -365,11 +406,32 @@ export default function ProfileContent({ user }: ProfileContentProps) {
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <p className="text-sm text-gray-600">Showing {matches.length} neighborhood matches</p>
-                    <Link href="/results">
-                      <Button variant="outline" size="sm">
-                        View Detailed Results
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={recalculateMatches}
+                        disabled={recalculating}
+                        className="border-airbnb-500 text-airbnb-500 hover:bg-airbnb-50"
+                      >
+                        {recalculating ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Recalculating...
+                          </>
+                        ) : (
+                          <>
+                            <TrendingUp className="h-4 w-4 mr-2" />
+                            Recalculate Matches
+                          </>
+                        )}
                       </Button>
-                    </Link>
+                      <Link href="/results">
+                        <Button variant="outline" size="sm">
+                          View Detailed Results
+                        </Button>
+                      </Link>
+                    </div>
                   </div>
 
                   <div className="space-y-3">

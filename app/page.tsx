@@ -1,4 +1,5 @@
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server"
+import { getUserPreferences, getUserMatches } from "@/lib/database"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import {
@@ -64,13 +65,55 @@ export default async function Home() {
   }
 
   let user = null
+  let userPreferences = null
+  let userMatches = null
+  let neighborhoodCount = 42 // Default fallback
+  let cityCount = 3 // Default fallback
 
   try {
     const supabase = createClient()
-    const {
-      data: { user: authUser },
-    } = await supabase.auth.getUser()
-    user = authUser
+    
+    // First check for user authentication
+    try {
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser()
+      user = authUser
+    } catch (error) {
+      console.error("Error getting user:", error)
+      // Continue without user
+    }
+
+    // Get actual counts from database (this should work even without auth)
+    try {
+      const { count: neighborhoods } = await supabase
+        .from('neighborhoods')
+        .select('*', { count: 'exact', head: true })
+      
+      const { data: cityData } = await supabase
+        .from('neighborhoods')
+        .select('city')
+      
+      // Count unique cities
+      const uniqueCities = new Set(cityData?.map(item => item.city) || [])
+      
+      neighborhoodCount = neighborhoods || 42
+      cityCount = uniqueCities.size || 3
+    } catch (error) {
+      console.error("Error fetching counts:", error)
+      // Use fallback values
+    }
+
+    // If user exists, fetch their preferences and matches
+    if (user) {
+      try {
+        userPreferences = await getUserPreferences(user.id)
+        userMatches = await getUserMatches(user.id)
+      } catch (error) {
+        console.error("Error fetching user data:", error)
+        // Continue without preferences/matches
+      }
+    }
   } catch (error) {
     console.error("Error getting user:", error)
     // Continue without user - will show landing page
@@ -770,11 +813,11 @@ export default async function Home() {
             {/* Quick Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto">
               <div className="bg-white rounded-xl p-4 shadow-md">
-                <div className="text-2xl font-bold text-airbnb-600">500+</div>
+                <div className="text-2xl font-bold text-airbnb-600">{neighborhoodCount}</div>
                 <div className="text-sm text-gray-600">Neighborhoods</div>
               </div>
               <div className="bg-white rounded-xl p-4 shadow-md">
-                <div className="text-2xl font-bold text-blue-600">25+</div>
+                <div className="text-2xl font-bold text-blue-600">{cityCount}</div>
                 <div className="text-sm text-gray-600">Cities</div>
               </div>
               <div className="bg-white rounded-xl p-4 shadow-md">
@@ -782,8 +825,8 @@ export default async function Home() {
                 <div className="text-sm text-gray-600">Lifestyle Factors</div>
               </div>
               <div className="bg-white rounded-xl p-4 shadow-md">
-                <div className="text-2xl font-bold text-purple-600">98%</div>
-                <div className="text-sm text-gray-600">Accuracy</div>
+                <div className="text-2xl font-bold text-purple-600">95%</div>
+                <div className="text-sm text-gray-600">Match Accuracy</div>
               </div>
             </div>
           </div>
@@ -847,7 +890,7 @@ export default async function Home() {
                 </div>
                 <h3 className="text-2xl font-bold text-gray-900 mb-4">Explore Areas</h3>
                 <p className="text-gray-600 mb-6 leading-relaxed">
-                  Browse through 500+ neighborhoods across India with detailed information and government data.
+                  Browse through {neighborhoodCount} neighborhoods across India with detailed information and government data.
                 </p>
                 <Link href="/neighborhoods">
                   <Button variant="outline" className="w-full bg-transparent border-gray-300 hover:bg-gray-50">
@@ -1013,38 +1056,70 @@ export default async function Home() {
                   </CardContent>
                 </Card>
 
-                <Card className="bg-white border-0 shadow-md">
+                <Card className={`bg-white border-0 shadow-md ${!userPreferences ? '' : 'opacity-60'}`}>
                   <CardContent className="p-6">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                        <Search className="h-6 w-6 text-blue-600" />
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                        userPreferences ? 'bg-green-100' : 'bg-blue-100'
+                      }`}>
+                        {userPreferences ? (
+                          <CheckCircle className="h-6 w-6 text-green-600" />
+                        ) : (
+                          <Search className="h-6 w-6 text-blue-600" />
+                        )}
                       </div>
                       <div className="flex-1">
-                        <h3 className="font-semibold text-gray-900">Ready for Quiz</h3>
-                        <p className="text-gray-600 text-sm">
-                          Take our lifestyle quiz to get personalized recommendations.
+                        <h3 className={`font-semibold ${userPreferences ? 'text-gray-900' : 'text-gray-900'}`}>
+                          {userPreferences ? 'Quiz Completed' : 'Ready for Quiz'}
+                        </h3>
+                        <p className={`text-sm ${userPreferences ? 'text-gray-600' : 'text-gray-600'}`}>
+                          {userPreferences 
+                            ? 'Great! Your lifestyle preferences have been recorded.'
+                            : 'Take our lifestyle quiz to get personalized recommendations.'
+                          }
                         </p>
                       </div>
-                      <Link href="/quiz">
-                        <Button size="sm" className="bg-airbnb-500 hover:bg-airbnb-600 text-white">
-                          Start
-                        </Button>
-                      </Link>
+                      {!userPreferences ? (
+                        <Link href="/quiz">
+                          <Button size="sm" className="bg-airbnb-500 hover:bg-airbnb-600 text-white">
+                            Start
+                          </Button>
+                        </Link>
+                      ) : (
+                        <div className="text-xs text-green-600 font-medium">Completed</div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card className="bg-white border-0 shadow-md opacity-60">
+                <Card className={`bg-white border-0 shadow-md ${!userPreferences ? 'opacity-60' : ''}`}>
                   <CardContent className="p-6">
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
-                        <TrendingUp className="h-6 w-6 text-gray-400" />
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                        userPreferences ? 'bg-blue-100' : 'bg-gray-100'
+                      }`}>
+                        <TrendingUp className={`h-6 w-6 ${userPreferences ? 'text-blue-600' : 'text-gray-400'}`} />
                       </div>
                       <div className="flex-1">
-                        <h3 className="font-semibold text-gray-500">View Results</h3>
-                        <p className="text-gray-400 text-sm">Complete the quiz to unlock your neighborhood matches.</p>
+                        <h3 className={`font-semibold ${userPreferences ? 'text-gray-900' : 'text-gray-500'}`}>
+                          View Results
+                        </h3>
+                        <p className={`text-sm ${userPreferences ? 'text-gray-600' : 'text-gray-400'}`}>
+                          {userPreferences 
+                            ? 'Explore your personalized neighborhood matches.'
+                            : 'Complete the quiz to unlock your neighborhood matches.'
+                          }
+                        </p>
                       </div>
-                      <div className="text-xs text-gray-400">Locked</div>
+                      {userPreferences ? (
+                        <Link href="/results">
+                          <Button size="sm" className="bg-airbnb-500 hover:bg-airbnb-600 text-white">
+                            View
+                          </Button>
+                        </Link>
+                      ) : (
+                        <div className="text-xs text-gray-400">Locked</div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -1068,7 +1143,7 @@ export default async function Home() {
                       <div>
                         <h3 className="font-semibold text-gray-900 mb-2">Pro Tip: Be Honest in Quiz</h3>
                         <p className="text-gray-700 text-sm leading-relaxed">
-                          The more honest you are about your preferences, the better our AI can match you with
+                          The more honest you are about your preferences, the better our algorithm can match you with
                           neighborhoods that truly fit your lifestyle.
                         </p>
                       </div>

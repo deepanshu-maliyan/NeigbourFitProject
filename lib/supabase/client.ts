@@ -11,7 +11,7 @@
  * @version 1.0.0
  */
 
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { createBrowserClient } from "@supabase/ssr"
 
 /**
  * Validates if Supabase environment variables are properly configured
@@ -48,7 +48,10 @@ export function createClient() {
       console.warn("Supabase is not properly configured")
       return null
     }
-    return createClientComponentClient()
+    return createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    )
   } catch (error) {
     console.error("Error creating Supabase client:", error)
     return null

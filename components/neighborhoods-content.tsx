@@ -9,7 +9,15 @@
  * - Responsive design for mobile and desktop
  *
  * This component handles the main neighborhoods page functionality including
- * data filtering, sorting, selection, and detailed information display.
+ * data filter                                                        <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-indigo-500 rounded-full"
+                                style={{ width: `${(normalizeScore(selectedNeighborhood.connectivity_score) / 5) * 100}%` }}
+                              />className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-orange-500 rounded-full"
+                                style={{ width: `${(normalizeScore(selectedNeighborhood.food_culture_score) / 5) * 100}%` }}
+                              />sorting, selection, and detailed information display.
  *
  * @component
  * @example
@@ -64,6 +72,19 @@ import {
 } from "lucide-react"
 import type { Neighborhood } from "@/types"
 import Link from "next/link"
+
+/**
+ * Normalizes a score to be within 1-5 range
+ * @param score - The raw score to normalize
+ * @param maxScore - The maximum possible score (default: 10)
+ * @returns A normalized score between 1-5
+ */
+const normalizeScore = (score: number, maxScore: number = 10): number => {
+  if (score <= 0) return 1
+  if (score >= maxScore) return 5
+  // Convert from 0-maxScore to 1-5 scale
+  return Number((1 + (score / maxScore) * 4).toFixed(1))
+}
 
 /**
  * Props interface for NeighborhoodsContent component
@@ -149,8 +170,8 @@ export default function NeighborhoodsContent({ neighborhoods }: NeighborhoodsCon
         case "job_opportunities":
           return b.job_opportunities_score - a.job_opportunities_score
         case "overall":
-          const aOverall = (a.safety_score + a.job_opportunities_score + a.affordability_score) / 3
-          const bOverall = (b.safety_score + b.job_opportunities_score + b.affordability_score) / 3
+          const aOverall = getOverallRating(a)
+          const bOverall = getOverallRating(b)
           return bOverall - aOverall
         default:
           return a.name.localeCompare(b.name)
@@ -215,15 +236,15 @@ export default function NeighborhoodsContent({ neighborhoods }: NeighborhoodsCon
    * consider important when choosing a neighborhood.
    *
    * @param {Neighborhood} neighborhood - Neighborhood object
-   * @returns {number} Overall rating (1-10 scale)
+   * @returns {number} Overall rating (1-5 scale)
    */
   const getOverallRating = (neighborhood: Neighborhood) => {
     return (
-      (neighborhood.safety_score +
-        neighborhood.job_opportunities_score +
-        neighborhood.affordability_score +
-        neighborhood.connectivity_score +
-        neighborhood.food_culture_score) /
+      (normalizeScore(neighborhood.safety_score) +
+        normalizeScore(neighborhood.job_opportunities_score) +
+        normalizeScore(neighborhood.affordability_score) +
+        normalizeScore(neighborhood.connectivity_score) +
+        normalizeScore(neighborhood.food_culture_score)) /
       5
     )
   }
@@ -320,14 +341,14 @@ export default function NeighborhoodsContent({ neighborhoods }: NeighborhoodsCon
                       </div>
                       <Badge
                         className={`${
-                          neighborhood.safety_score >= 4
+                          normalizeScore(neighborhood.safety_score) >= 4
                             ? "bg-green-100 text-green-700 border-green-200"
-                            : neighborhood.safety_score >= 3
+                            : normalizeScore(neighborhood.safety_score) >= 3
                             ? "bg-yellow-100 text-yellow-700 border-yellow-200"
                             : "bg-red-100 text-red-700 border-red-200"
                         }`}
                       >
-                        Safety: {neighborhood.safety_score}/5
+                        Safety: {normalizeScore(neighborhood.safety_score)}/5
                       </Badge>
                     </div>
 
@@ -335,25 +356,25 @@ export default function NeighborhoodsContent({ neighborhoods }: NeighborhoodsCon
                       <div className="flex items-center gap-2">
                         <IndianRupee className="h-4 w-4 text-gray-500" />
                         <span className="text-sm text-gray-600">
-                          Affordability: {neighborhood.affordability_score}/5
+                          Affordability: {normalizeScore(neighborhood.affordability_score)}/5
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Train className="h-4 w-4 text-gray-500" />
                         <span className="text-sm text-gray-600">
-                          Metro Access: {neighborhood.metro_access_score}/5
+                          Metro Access: {normalizeScore(neighborhood.metro_access_score)}/5
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <UtensilsCrossed className="h-4 w-4 text-gray-500" />
                         <span className="text-sm text-gray-600">
-                          Food Culture: {neighborhood.food_culture_score}/5
+                          Food Culture: {normalizeScore(neighborhood.food_culture_score)}/5
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Building className="h-4 w-4 text-gray-500" />
                         <span className="text-sm text-gray-600">
-                          Infrastructure: {neighborhood.connectivity_score}/5
+                          Infrastructure: {normalizeScore(neighborhood.connectivity_score)}/5
                         </span>
                       </div>
                     </div>
@@ -401,10 +422,10 @@ export default function NeighborhoodsContent({ neighborhoods }: NeighborhoodsCon
                             <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
                               <div
                                 className="h-full bg-green-500 rounded-full"
-                                style={{ width: `${(selectedNeighborhood.safety_score / 5) * 100}%` }}
+                                style={{ width: `${(normalizeScore(selectedNeighborhood.safety_score) / 5) * 100}%` }}
                               />
                             </div>
-                            <span className="text-sm font-medium">{selectedNeighborhood.safety_score}/5</span>
+                            <span className="text-sm font-medium">{normalizeScore(selectedNeighborhood.safety_score)}/5</span>
                           </div>
                         </div>
                         <div>
@@ -413,10 +434,10 @@ export default function NeighborhoodsContent({ neighborhoods }: NeighborhoodsCon
                             <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
                               <div
                                 className="h-full bg-blue-500 rounded-full"
-                                style={{ width: `${(selectedNeighborhood.affordability_score / 5) * 100}%` }}
+                                style={{ width: `${(normalizeScore(selectedNeighborhood.affordability_score) / 5) * 100}%` }}
                               />
                             </div>
-                            <span className="text-sm font-medium">{selectedNeighborhood.affordability_score}/5</span>
+                            <span className="text-sm font-medium">{normalizeScore(selectedNeighborhood.affordability_score)}/5</span>
                           </div>
                         </div>
                         <div>
@@ -425,10 +446,10 @@ export default function NeighborhoodsContent({ neighborhoods }: NeighborhoodsCon
                             <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
                               <div
                                 className="h-full bg-purple-500 rounded-full"
-                                style={{ width: `${(selectedNeighborhood.metro_access_score / 5) * 100}%` }}
+                                style={{ width: `${(normalizeScore(selectedNeighborhood.metro_access_score) / 5) * 100}%` }}
                               />
                             </div>
-                            <span className="text-sm font-medium">{selectedNeighborhood.metro_access_score}/5</span>
+                            <span className="text-sm font-medium">{normalizeScore(selectedNeighborhood.metro_access_score)}/5</span>
                           </div>
                         </div>
                       </div>
@@ -442,7 +463,7 @@ export default function NeighborhoodsContent({ neighborhoods }: NeighborhoodsCon
                                 style={{ width: `${(selectedNeighborhood.food_culture_score / 5) * 100}%` }}
                               />
                             </div>
-                            <span className="text-sm font-medium">{selectedNeighborhood.food_culture_score}/5</span>
+                            <span className="text-sm font-medium">{normalizeScore(selectedNeighborhood.food_culture_score)}/5</span>
                           </div>
                         </div>
                         <div>
@@ -451,10 +472,10 @@ export default function NeighborhoodsContent({ neighborhoods }: NeighborhoodsCon
                             <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
                               <div
                                 className="h-full bg-pink-500 rounded-full"
-                                style={{ width: `${(selectedNeighborhood.nightlife_score / 5) * 100}%` }}
+                                style={{ width: `${(normalizeScore(selectedNeighborhood.nightlife_score) / 5) * 100}%` }}
                               />
                             </div>
-                            <span className="text-sm font-medium">{selectedNeighborhood.nightlife_score}/5</span>
+                            <span className="text-sm font-medium">{normalizeScore(selectedNeighborhood.nightlife_score)}/5</span>
                           </div>
                         </div>
                         <div>
@@ -466,7 +487,7 @@ export default function NeighborhoodsContent({ neighborhoods }: NeighborhoodsCon
                                 style={{ width: `${(selectedNeighborhood.connectivity_score / 5) * 100}%` }}
                               />
                             </div>
-                            <span className="text-sm font-medium">{selectedNeighborhood.connectivity_score}/5</span>
+                            <span className="text-sm font-medium">{normalizeScore(selectedNeighborhood.connectivity_score)}/5</span>
                           </div>
                         </div>
                       </div>
@@ -479,25 +500,25 @@ export default function NeighborhoodsContent({ neighborhoods }: NeighborhoodsCon
                       <div className="flex items-center gap-2">
                         <Users className="h-4 w-4 text-gray-500" />
                         <span className="text-sm text-gray-600">
-                          Family Friendly: {selectedNeighborhood.family_friendly_score}/5
+                          Family Friendly: {normalizeScore(selectedNeighborhood.family_friendly_score)}/5
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Globe className="h-4 w-4 text-gray-500" />
                         <span className="text-sm text-gray-600">
-                          Cultural Diversity: {selectedNeighborhood.cultural_diversity_score}/5
+                          Cultural Diversity: {normalizeScore(selectedNeighborhood.cultural_diversity_score)}/5
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Heart className="h-4 w-4 text-gray-500" />
                         <span className="text-sm text-gray-600">
-                          Healthcare: {selectedNeighborhood.healthcare_score}/5
+                          Healthcare: {normalizeScore(selectedNeighborhood.healthcare_score)}/5
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Building className="h-4 w-4 text-gray-500" />
                         <span className="text-sm text-gray-600">
-                          Education: {selectedNeighborhood.education_score}/5
+                          Education: {normalizeScore(selectedNeighborhood.education_score)}/5
                         </span>
                       </div>
                     </div>

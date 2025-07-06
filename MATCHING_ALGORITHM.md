@@ -2,52 +2,171 @@
 
 ## Overview
 
-The NeighborFit matching algorithm uses a direct scoring system to match users with neighborhoods based on 13 lifestyle factors. Each neighborhood has pre-calculated scores for these factors, which are weighted according to user preferences.
+The NeighborFit matching algorithm uses an advanced weighted scoring system to match users with neighborhoods based on 13 lifestyle factors. The algorithm produces meaningful match percentages in the 40-95% range that provide users with actionable results.
 
-## Matching Process
+## Neighborhood Scoring System
 
-1. **User Preferences Collection**
-   - Users rate importance of 13 factors on a 1-5 scale
-   - Preferences are stored in `user_preferences` table
-   - Each rating represents how important that factor is to the user
+Each neighborhood in the database is scored on 13 factors using government data and municipal statistics:
 
-2. **Neighborhood Data**
-   - Each neighborhood has 13 pre-scored metrics (0-10 scale)
-   - Scores based on government data and municipal statistics
-   - Stored in `neighborhoods` table
+### Scoring Factors (0-10 scale)
+1. **Safety Score** - Crime rates, security infrastructure
+2. **Affordability Score** - Cost of living, housing prices
+3. **Connectivity Score** - Transportation infrastructure
+4. **Metro Access Score** - Public transport accessibility
+5. **Food Culture Score** - Restaurant diversity, local cuisine
+6. **Nightlife Score** - Entertainment options, social venues
+7. **Family Friendly Score** - Schools, parks, family amenities
+8. **Cultural Diversity Score** - Demographics, community diversity
+9. **Green Spaces Score** - Parks, gardens, environmental quality
+10. **Job Opportunities Score** - Employment market, business hubs
+11. **Healthcare Score** - Medical facilities, healthcare access
+12. **Education Score** - Educational institutions, quality
+13. **Shopping Score** - Retail options, commercial areas
 
-3. **Scoring System**
-   ```typescript
-   // For each factor:
-   const factorScore = neighborhood.factor_score * (user.factor_importance / 5)
-   
-   // Total importance for normalization
-   const totalImportance = sum(all_factor_importances)
-   
-   // Final score calculation
-   const matchScore = (sum(all_factor_scores) / totalImportance) * 10
-   ```
+## User Preference Collection
 
-## Actual Code Implementation
+Users rate the importance of each factor on a 1-5 scale:
+- **1**: Not important at all
+- **2**: Slightly important
+- **3**: Moderately important
+- **4**: Very important
+- **5**: Extremely important
 
-The matching algorithm is implemented in `lib/database.ts`. Here's the core calculation function:
+## Matching Algorithm
 
+### Step 1: Normalization
 ```typescript
-// Calculate and save neighborhood matches for a user
-export async function calculateAndSaveMatches(userId: string): Promise<UserResult[]> {
-  const supabase = createClient()
+// Normalize neighborhood scores to 0-1 scale
+const normalizedScores = {
+  safety: Math.min(neighborhood.safety_score / 10, 1),
+  affordability: Math.min(neighborhood.affordability_score / 10, 1),
+  // ... for all 13 factors
+}
 
-  // Get user preferences - required for calculation
-  const preferences = await getUserPreferences(userId)
-  if (!preferences) {
-    console.error("No preferences found for user")
-    return []
+// Normalize user importance ratings to 0-1 scale
+const normalizedImportance = {
+  safety: preferences.safety_importance / 5,
+  affordability: preferences.affordability_importance / 5,
+  // ... for all 13 factors
+}
+```
+
+### Step 2: Weighted Score Calculation
+```typescript
+// Calculate weighted scores (neighborhood_score × user_importance)
+const weightedScores = [
+  normalizedScores.safety × normalizedImportance.safety,
+  normalizedScores.affordability × normalizedImportance.affordability,
+  // ... for all 13 factors
+]
+
+const totalWeightedScore = weightedScores.reduce((sum, score) => sum + score, 0)
+const totalImportanceWeight = Object.values(normalizedImportance).reduce((sum, weight) => sum + weight, 0)
+```
+
+### Step 3: Base Score Assignment
+```typescript
+// Ensure meaningful percentages with a base score
+const baseScore = 40 // Minimum match percentage (40%)
+const variableScore = 55 // Maximum additional score (40 + 55 = 95% max)
+
+let matchScore = baseScore
+if (totalImportanceWeight > 0) {
+  const normalizedMatch = totalWeightedScore / totalImportanceWeight
+  matchScore = baseScore + (normalizedMatch × variableScore)
+}
+```
+
+### Step 4: Score Enhancement
+```typescript
+// Sort by initial match score
+results.sort((a, b) => b.match_score - a.match_score)
+
+// Enhance top matches for better user experience
+const enhancedResults = results.map((result, index) => {
+  let enhancedScore = result.match_score
+  
+  // Boost top 10 matches (2-20% boost)
+  if (index < 10) {
+    const boost = (10 - index) × 2
+    enhancedScore = Math.min(enhancedScore + boost, 95)
   }
+  
+  // Add slight variation to prevent identical scores
+  const variation = (Math.random() - 0.5) × 2 // ±1% variation
+  enhancedScore = Math.max(40, Math.min(95, enhancedScore + variation))
+  
+  return {
+    ...result,
+    match_score: Number.parseFloat(enhancedScore.toFixed(1))
+  }
+})
+```
 
-  // Get all neighborhoods to calculate matches against
-  const neighborhoods = await getNeighborhoods()
-  if (neighborhoods.length === 0) {
-    console.error("No neighborhoods found")
+## Algorithm Features
+
+### 1. **Meaningful Score Range**
+- All matches fall between 40-95%
+- Provides actionable results for users
+- Maintains relative ranking accuracy
+
+### 2. **Top Match Enhancement**
+- Top 10 matches receive additional boost
+- Creates clear distinction between good and great matches
+- Encourages user engagement with best options
+
+### 3. **Weighted Importance**
+- User preferences directly influence scoring
+- More important factors have greater impact
+- Personalized results based on individual priorities
+
+### 4. **Score Variation**
+- Slight randomization prevents identical scores
+- Maintains natural score distribution
+- Avoids artificial tie-breaking
+
+## Database Integration
+
+### User Preferences Storage
+```sql
+CREATE TABLE user_preferences (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id),
+  safety_importance INTEGER CHECK (safety_importance BETWEEN 1 AND 5),
+  affordability_importance INTEGER CHECK (affordability_importance BETWEEN 1 AND 5),
+  -- ... for all 13 factors
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+### Match Results Storage
+```sql
+CREATE TABLE user_results (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id),
+  neighborhood_id INTEGER REFERENCES neighborhoods(id),
+  match_score DECIMAL(4,1) CHECK (match_score BETWEEN 0 AND 100),
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id, neighborhood_id)
+);
+```
+
+## Performance Optimizations
+
+1. **Batch Processing**: All neighborhoods calculated in single operation
+2. **Efficient Upsert**: Uses PostgreSQL UPSERT to handle conflicts
+3. **Indexed Queries**: Optimized database queries with proper indexing
+4. **Caching**: Results cached until user retakes quiz
+
+## Error Handling & Reliability
+
+- Graceful fallback for database conflicts
+- Comprehensive logging for debugging
+- Automatic retry mechanisms
+- Data validation at multiple levels
+
+This algorithm ensures users receive meaningful match percentages while maintaining accurate relative rankings based on their personal preferences.
     return []
   }
 

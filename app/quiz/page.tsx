@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -14,7 +14,6 @@ import { Loader2 } from "lucide-react"
 
 export default function QuizPage() {
   const router = useRouter()
-  const supabase = createClientComponentClient()
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<string, number>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -45,6 +44,10 @@ export default function QuizPage() {
     try {
       setIsSubmitting(true)
       setError(null)
+
+      if (!supabase) {
+        throw new Error("Supabase client not available")
+      }
 
       // Get current user
       const {

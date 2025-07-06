@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import { supabase } from "@/lib/supabase/client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Loader2, MapPin, Info, Users, GraduationCap, IndianRupee, Wind } from "lucide-react"
@@ -12,7 +12,6 @@ import type { UserResult, Neighborhood } from "@/types"
 type MatchWithNeighborhood = UserResult & { neighborhood: Neighborhood }
 
 export default function ResultsPage() {
-  const supabase = createClientComponentClient()
   const [matches, setMatches] = useState<MatchWithNeighborhood[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedNeighborhood, setSelectedNeighborhood] = useState<Neighborhood | null>(null)
@@ -22,6 +21,11 @@ export default function ResultsPage() {
     async function fetchMatches() {
       try {
         setLoading(true)
+        
+        if (!supabase) {
+          throw new Error("Supabase client not available")
+        }
+        
         const {
           data: { user },
         } = await supabase.auth.getUser()
@@ -240,10 +244,20 @@ export default function ResultsPage() {
 }
 
 function ScoreBar({ label, score }: { label: string; score: number }) {
+  // Normalize score from 0-10 to 1-5 scale
+  const normalizeScore = (score: number, maxScore: number = 10): number => {
+    if (score <= 0) return 1
+    if (score >= maxScore) return 5
+    // Convert from 0-maxScore to 1-5 scale
+    return Number((1 + (score / maxScore) * 4).toFixed(1))
+  }
+
+  const normalizedScore = normalizeScore(score)
+
   const getColor = (score: number) => {
-    if (score >= 8) return "bg-green-500"
-    if (score >= 6) return "bg-blue-500"
-    if (score >= 4) return "bg-yellow-500"
+    if (score >= 4) return "bg-green-500"
+    if (score >= 3) return "bg-blue-500"
+    if (score >= 2) return "bg-yellow-500"
     return "bg-red-500"
   }
 
@@ -252,9 +266,9 @@ function ScoreBar({ label, score }: { label: string; score: number }) {
       <span className="text-gray-700 text-sm font-medium">{label}</span>
       <div className="flex items-center gap-2">
         <div className="w-20 bg-gray-200 h-2 rounded-full overflow-hidden">
-          <div className={`h-full ${getColor(score)}`} style={{ width: `${score * 10}%` }}></div>
+          <div className={`h-full ${getColor(normalizedScore)}`} style={{ width: `${normalizedScore * 20}%` }}></div>
         </div>
-        <span className="text-xs text-gray-600 w-6">{score.toFixed(1)}</span>
+        <span className="text-xs text-gray-600 w-8">{normalizedScore}/5</span>
       </div>
     </div>
   )
